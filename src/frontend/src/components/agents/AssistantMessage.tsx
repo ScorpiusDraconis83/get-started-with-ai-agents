@@ -35,6 +35,7 @@ export function AssistantMessage({
 
   return (
     <CopilotMessage
+      id={"msg-" + message.id}
       key={message.id}
       actions={
         <span>
