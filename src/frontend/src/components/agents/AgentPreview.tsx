@@ -18,15 +18,54 @@ import styles from "./AgentPreview.module.css";
 
 interface IAgent {
   id: string;
+  object: string;
+  created_at: number;
   name: string;
-  description?: string;
-  logo?: string;
+  description?: string | null;
+  model: string;
+  instructions?: string;
+  tools?: Array<{ type: string }>;
+  top_p?: number;
+  temperature?: number;
+  tool_resources?: {
+    file_search?: {
+      vector_store_ids?: string[];
+    };
+    [key: string]: any;
+  };
+  metadata?: Record<string, any>;
+  response_format?: "auto" | string;
 }
 
 interface IAgentPreviewProps {
   resourceId: string;
   agentDetails: IAgent;
 }
+
+interface IAnnotation {
+  file_name?: string;
+  text: string;
+  start_index: number;
+  end_index: number;
+}
+
+const preprocessContent = (content: string, annotations?: IAnnotation[]): string => {
+    if (annotations) {
+        // Process annotations in reverse order so that the indexes remain valid
+        annotations.slice().reverse().forEach(annotation => {
+            // If there's a file_name, show it (wrapped in brackets), otherwise fall back to annotation.text.
+            const linkText = annotation.file_name
+                ? `[${annotation.file_name}]`
+                : annotation.text;
+
+            content = content.slice(0, annotation.start_index) +
+                linkText +
+                content.slice(annotation.end_index);
+        });
+    }
+    return content;
+};
+
 
 export function AgentPreview({ agentDetails }: IAgentPreviewProps): ReactNode {
   const [isSettingsPanelOpen, setIsSettingsPanelOpen] = useState(false);
@@ -48,7 +87,8 @@ export function AgentPreview({ agentDetails }: IAgentPreviewProps): ReactNode {
         const json_response: Array<{
           role: string;
           content: string;
-          annotations?: any[];
+          created_at: string;
+          annotations?: IAnnotation[];
         }> = await response.json();
 
         // It's generally better to build the new list and set state once
@@ -58,17 +98,18 @@ export function AgentPreview({ agentDetails }: IAgentPreviewProps): ReactNode {
         for (const entry of reversedResponse) {
           if (entry.role === "user") {
             historyMessages.push({
-              id: ``,
+              id: crypto.randomUUID(),
               content: entry.content,
               role: "user",
-              more: { time: new Date().toISOString() }, // Or use timestamp from history if available
+              more: { time: entry.created_at }, // Or use timestamp from history if available
             });
           } else {
             historyMessages.push({
               id: `assistant-hist-${Date.now()}-${Math.random()}`, // Ensure unique ID
-              content: entry.content,
+              content: preprocessContent(entry.content, entry.annotations),
               role: "assistant", // Assuming 'assistant' role for non-user
               isAnswer: true, // Assuming this property for assistant messages
+              more: { time: entry.created_at }, // Or use timestamp from history if available
               // annotations: entry.annotations, // If you plan to use annotations
             });
           }
@@ -132,6 +173,8 @@ export function AgentPreview({ agentDetails }: IAgentPreviewProps): ReactNode {
       const postData = { message: message };
       // IMPORTANT: Add credentials: 'include' if server cookies are critical
       // and if your backend is on the same domain or properly configured for cross-site cookies.
+
+      setIsResponding(true);      
       const response = await fetch("/chat", {
         method: "POST",
         headers: {
@@ -173,10 +216,6 @@ export function AgentPreview({ agentDetails }: IAgentPreviewProps): ReactNode {
       } else {
         console.error("[ChatClient] Fetch failed:", error);
       }
-    } finally {
-      // Reset the controller once the request is finished or cancelled
-      //TODO
-      // this.abortController = null;
     }
   };
 
@@ -187,11 +226,12 @@ export function AgentPreview({ agentDetails }: IAgentPreviewProps): ReactNode {
     let accumulatedContent = "";
     let isStreaming = true;
     let buffer = "";
+    let annotations: IAnnotation[] = [];
 
     // Create a reader for the SSE stream
     const reader = stream.getReader();
     const decoder = new TextDecoder();
-
+    
     const readStream = async () => {
       while (true) {
         const { done, value } = await reader.read();
@@ -257,7 +297,6 @@ export function AgentPreview({ agentDetails }: IAgentPreviewProps): ReactNode {
             } else {
               // If we have no messageDiv yet, create one
               if (!chatItem) {
-                // TODO
                 chatItem = createAssistantMessageDiv();
                 console.log(
                   "[ChatClient] Created new messageDiv for assistant."
@@ -267,14 +306,13 @@ export function AgentPreview({ agentDetails }: IAgentPreviewProps): ReactNode {
               if (data.type === "completed_message") {
                 clearAssistantMessage(chatItem);
                 accumulatedContent = data.content;
+                annotations = data.annotations;
                 isStreaming = false;
                 console.log(
                   "[ChatClient] Received completed message:",
                   accumulatedContent
                 );
 
-                // TODO: Hide spinner
-                // document.getElementById("generating-message").style.display = "none";
                 setIsResponding(false);
               } else {
                 accumulatedContent += data.content;
@@ -285,7 +323,7 @@ export function AgentPreview({ agentDetails }: IAgentPreviewProps): ReactNode {
               }
 
               // Update the UI with the accumulated content
-              appendAssistantMessage(chatItem, accumulatedContent, isStreaming);
+              appendAssistantMessage(chatItem, accumulatedContent, isStreaming, annotations);
             }
           }
 
@@ -301,20 +339,19 @@ export function AgentPreview({ agentDetails }: IAgentPreviewProps): ReactNode {
   };
 
   const createAssistantMessageDiv: () => IChatItem = () => {
-    var item = { id: "unknown", content: "", isAnswer: true };
+    var item = { id: crypto.randomUUID(), content: "", isAnswer: true, more: { time: new Date().toISOString() } };
     setMessageList((prev) => [...prev, item]);
     return item;
   };
-
   const appendAssistantMessage = (
     chatItem: IChatItem,
     accumulatedContent: string,
-    isStreaming: boolean
+    isStreaming: boolean,
+    annotations?: IAnnotation[]
   ) => {
     try {
       // Preprocess content to convert citations to links using the updated annotation data
-      const preprocessedContent = accumulatedContent;
-      // Convert the accumulated content to HTML using markdown-it
+      const preprocessedContent = preprocessContent(accumulatedContent, annotations);      // Convert the accumulated content to HTML using markdown-it
       let htmlContent = preprocessedContent;
       if (!chatItem) {
         throw new Error("Message content div not found in the template.");
@@ -323,20 +360,18 @@ export function AgentPreview({ agentDetails }: IAgentPreviewProps): ReactNode {
       // Set the innerHTML of the message text div to the HTML content
       chatItem.content = htmlContent;
       setMessageList((prev) => {
-        const before = prev;
-        console.log("[ChatClient] Message list before update:", before);
-        const after = [...prev.slice(0, -1), { ...chatItem }]; // Update the last message in the list
-        console.log("[ChatClient] Message list after update:", after);
-        return after;
+        return [...prev.slice(0, -1), { ...chatItem }];
       });
 
       // Use requestAnimationFrame to ensure the DOM has updated before scrolling
       // Only scroll if stop streaming
       if (!isStreaming) {
         requestAnimationFrame(() => {
-          // TODO
-          // this.scrollToBottom();
-        });
+          const lastChild = document.getElementById(`msg-${chatItem.id}`);
+          if (lastChild) {
+            lastChild.scrollIntoView({ behavior: "smooth", block: "end" });
+          }
+       });
       }
     } catch (error) {
       console.error("Error in appendAssistantMessage:", error);
@@ -410,7 +445,7 @@ export function AgentPreview({ agentDetails }: IAgentPreviewProps): ReactNode {
               <AgentIcon
                 alt=""
                 iconClassName={styles.agentIcon}
-                iconName={agentDetails.logo}
+                iconName={agentDetails.metadata?.logo}
               />
               <Body1 className={styles.agentName}>{agentDetails.name}</Body1>
             </>
@@ -446,7 +481,7 @@ export function AgentPreview({ agentDetails }: IAgentPreviewProps): ReactNode {
                 <AgentIcon
                   alt=""
                   iconClassName={styles.emptyStateAgentIcon}
-                  iconName={agentDetails.logo}
+                  iconName={agentDetails.metadata?.logo}
                 />
                 <Caption1 className={styles.agentName}>
                   {agentDetails.name}
@@ -456,7 +491,7 @@ export function AgentPreview({ agentDetails }: IAgentPreviewProps): ReactNode {
             )}
             <AgentPreviewChatBot
               agentName={agentDetails.name}
-              agentLogo={agentDetails.logo}
+              agentLogo={agentDetails.metadata?.logo}
               chatContext={chatContext}
             />
           </>
