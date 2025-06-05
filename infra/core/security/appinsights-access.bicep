@@ -1,6 +1,15 @@
 metadata description = 'Assigns MonitoringMetricsContributor role to Application Insights.'
 param appInsightsName string
 param principalId string
+@allowed([
+  'Device'
+  'ForeignGroup'
+  'Group'
+  'ServicePrincipal'
+  'User'
+  ''
+])
+param principalType string = ''
 
 resource appInsights 'Microsoft.Insights/components@2020-02-02' existing = {
   name: appInsightsName
@@ -13,6 +22,7 @@ resource monitoringMetricsContributorRoleAssignment 'Microsoft.Authorization/rol
   scope: appInsights // Use when specifying a scope that is different than the deployment scope
   name: guid(subscription().id, resourceGroup().id, principalId, monitoringMetricsContributorRole)
   properties: {
+    principalType: principalType
     roleDefinitionId: monitoringMetricsContributorRole
     principalId: principalId
   }
