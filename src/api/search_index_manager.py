@@ -64,7 +64,7 @@ class SearchIndexManager:
             model: str,
             deployment_name: str,
             embedding_endpoint: str, 
-            embed_api_key: str,
+            embed_api_key: Optional[str],
             embedding_client: Optional[Any] = None
         ) -> None:
         """Constructor."""

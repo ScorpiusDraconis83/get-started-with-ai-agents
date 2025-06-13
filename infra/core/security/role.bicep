@@ -9,7 +9,7 @@ param principalId string
   'User'
   ''
 ])
-param principalType string = ''
+param principalType string
 param roleDefinitionId string
 
 resource role 'Microsoft.Authorization/roleAssignments@2022-04-01' = {

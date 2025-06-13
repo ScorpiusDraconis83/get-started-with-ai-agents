@@ -4,18 +4,40 @@
 
 name: azd-get-started-with-ai-agents
 metadata:
-  template: azd-get-started-with-ai-agents@0.0.1-beta
+  template: azd-get-started-with-ai-agents@1.0.0
 
 hooks:
+  preup:
+    posix:
+      shell: sh
+      run: chmod u+r+x ./scripts/validate_env_vars.sh; ./scripts/validate_env_vars.sh
+      interactive: true
+      continueOnError: false
+    windows:
+      shell: pwsh
+      run: ./scripts/validate_env_vars.ps1
+      interactive: true
+      continueOnError: false      
+  preprovision:
+    posix:
+      shell: sh
+      run: chmod u+r+x ./scripts/set_default_models.sh; chmod u+r+x ./scripts/resolve_model_quota.sh; ./scripts/set_default_models.sh
+      interactive: true
+      continueOnError: false
+    windows:
+      shell: pwsh
+      run: ./scripts/set_default_models.ps1
+      interactive: true
+      continueOnError: false      
   postprovision:
     windows:
       shell: pwsh
-      run: ./scripts/write_env.ps1
+      run: ./scripts/write_env.ps1; ./scripts/setup_credential.ps1
       continueOnError: true
       interactive: true
     posix:
       shell: sh
-      run: ./scripts/write_env.sh
+      run: chmod u+r+x ./scripts/write_env.sh; chmod u+r+x ./scripts/setup_credential.sh; ./scripts/write_env.sh; ./scripts/setup_credential.sh
       continueOnError: true
       interactive: true
 
@@ -33,7 +55,7 @@ pipeline:
     - AZURE_LOG_ANALYTICS_WORKSPACE_NAME
     - USE_CONTAINER_REGISTRY
     - USE_APPLICATION_INSIGHTS
-    - USE_SEARCH_SERVICE
+    - USE_AZURE_AI_SEARCH_SERVICE
     - AZURE_AI_AGENT_NAME
     - AZURE_AI_AGENT_ID
     - AZURE_AI_AGENT_DEPLOYMENT_NAME
@@ -50,4 +72,8 @@ pipeline:
     - AZURE_AI_EMBED_MODEL_VERSION
     - AZURE_AI_EMBED_DIMENSIONS
     - AZURE_AI_SEARCH_INDEX_NAME
-    - AZURE_EXISTING_AIPROJECT_CONNECTION_STRING
+    - AZURE_EXISTING_AIPROJECT_RESOURCE_ID
+    - AZURE_EXISTING_AIPROJECT_ENDPOINT
+    - AZURE_EXISTING_AGENT_ID
+    - ENABLE_AZURE_MONITOR_TRACING
+    - AZURE_TRACING_GEN_AI_CONTENT_RECORDING_ENABLED
